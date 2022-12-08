@@ -1,0 +1,152 @@
+---
+title: "Haberman's Survival Analysis"
+author: "Shuraya Choudhury"
+date: "2022-12-04"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+```{r}
+haberman<-read.csv("haberman.csv")
+
+library(ggplot2)
+library(dplyr)
+library(pROC)
+library(faraway)
+
+attach(haberman)
+haberman %>% mutate(n_survival=ifelse(survival_status==2,1,0)) %>% head
+haberman %>% mutate(num_survival=ifelse(survival_status==2,1,0))->haberman
+
+haberman = subset(haberman, select = -c(survival_status) )
+haberman$num_survival<-as.factor(haberman$num_survival)
+
+```
+
+
+Descriptive Analysis
+
+```{r}
+pairs(haberman)
+
+table(haberman$num_survival)
+prop.table(table(haberman$num_survival)) 
+
+par(mfrow=c(1,3))
+boxplot(age~haberman$num_survival)
+boxplot(year_operated~haberman$num_survival)
+boxplot(pos_node~haberman$num_survival)
+
+
+
+ggplot(haberman, aes(x=age, color=num_survival)) + geom_histogram(fill="grey", position="dodge")
+
+ggplot(haberman, aes(x = year_operated, fill = num_survival)) + geom_bar(position = "dodge")
+
+ggplot(haberman, aes(x = pos_node, fill = num_survival)) + geom_bar(position = "dodge")
+
+
+```
+
+
+```{r}
+df = sort(sample(nrow(haberman), nrow(haberman)*.7))
+train<-haberman[df,]
+test<-haberman[-df,]
+min(age)
+```
+
+
+```{r}
+
+logit.mod<-glm(num_survival~age+year_operated+pos_node, family=binomial, data=haberman)
+summary(logit.mod)
+confint(logit.mod)
+
+1-pchisq(25.43, df=3)# Deviance test
+
+
+#models with training data for goodness of fit comparison
+mod<-glm(num_survival~age+year_operated+pos_node, family=binomial, data=train)
+
+prediction <- predict(mod, test, type="response")
+roc_object <- roc( test$num_survival, prediction)
+auc( roc_object )
+
+
+mod1<-glm(num_survival~age+year_operated+pos_node, family=binomial(link="probit"), data=train)
+prediction1 <- predict(mod1, test, type="response")
+roc_object1 <- roc( test$num_survival, prediction1)
+auc( roc_object1 )
+
+mod2<-glm(num_survival~age+year_operated+pos_node, family=binomial(link="cauchit"), data=train)
+prediction2 <- predict(mod2, test, type="response")
+roc_object2 <- roc( test$num_survival, prediction2)
+auc( roc_object2 )
+
+
+```
+
+```{r}
+
+
+qqnorm(hatvalues(logit.mod))# To see influential points
+
+b <- coef(logit.mod) # beta
+n <- nrow(haberman)
+X <- cbind(rep(1,n), age, year_operated, pos_node) # model matrix
+Eta <- as.vector(X %*% b) #fitted eta
+
+
+Yhat <- ilogit(Eta) # fitted probability (Eta is X %*% beta)
+RawRes <- as.numeric(haberman$num_survival)-1 - Yhat # actual prob - fitted prob
+
+
+
+haberman$Eta = Eta
+haberman$RawRes = RawRes 
+DRes <- resid(logit.mod, type="deviance") 
+
+
+
+
+#roc curve 
+haberman$Fitted <- fitted(logit.mod) # predicted probability #$
+ROC <- roc(haberman$num_survival,haberman$Fitted)
+ROC
+plot(ROC)
+#Binned Res(does not work)
+G <- group_by(haberman, 
+             cut(Eta,
+	breaks=unique(
+		c(min(Eta)-1, quantile(Eta, 1:20/21), max(Eta)+1)
+	)
+)
+
+)              
+
+Diag <- summarise(G, Resid=mean(RawRes), Eta=mean(Eta))
+par(mfrow=c(1,1))
+plot(Resid~Eta, Diag)
+
+
+
+#age
+G.a <- group_by(haberman, age)
+Diag.a <- summarise(G.a, Resid=mean(RawRes),Count=n())
+ggplot(Diag.a, aes(x=age, y=Resid, size=sqrt(Count))) + geom_point()
+# by pos_node
+group_by(haberman, pos_node) %>%
+summarise(Resid=mean(RawRes), Count=n()) %>%
+ggplot(aes(x=pos_node, y=Resid, size=sqrt(Count))) + geom_point()
+#by year
+group_by(haberman, year_operated) %>%
+summarise(Resid=mean(RawRes), Count=n()) %>%
+ggplot(aes(x=year_operated, y=Resid, size=sqrt(Count))) + geom_point()
+
+
+
+
+
+```
