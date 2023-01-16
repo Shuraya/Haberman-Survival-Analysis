@@ -1,4 +1,4 @@
-# Cancer-Survival-Analysis
+# Haberman's-Survival-Analysis
 
 # Objective:
 To analyze the survival of patients who have undergone breast
